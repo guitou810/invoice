@@ -79,16 +79,31 @@ public class DAO {
 	public void createInvoice(CustomerEntity customer, int[] productIDs, int[] quantities)
 		throws Exception {
 		
-            String sql ="INSERT INTO Invoice()";
+            int id=0;
+            String sql ="INSERT INTO Invoice(CustomerID) VALUES(?)";
+            String sql2="SELECT INTO Item VALUES(?,?,?,(SELECT price FROM Product WHERE ID=?))";
             try (Connection connection = myDataSource.getConnection();
-			PreparedStatement statement = connection.prepareStatement(sql)) {
+			PreparedStatement statement = connection.prepareStatement(sql,Statement.RETURN_GENERATED_KEYS)) {
 			statement.setInt(1, customer.getCustomerId());
+                        statement.executeUpdate();
+                        ResulSet key = statement.getGeneratedKeys();
+                        if(key.next()){
+                            id=key.getInt(1);
+                        }
                         
-            
-                       
-                        
+                        try(PreparedStatement statement2 = connection.prepareStatement(sql2)) {
+                            int nombre_produit=productIDs.length;
+                            for (int i=0;i<nombre_produit;i++){
+                                statement2.setInt(1, id);
+                                statement2.setInt(2, i);
+                                statement2.setInt(3, productIDs[i]);
+                                statement2.setInt(4, quantities[i]);
+                                statement2.setInt(5,productIDs[i]);
+                                statement2.executeUpdate();
+                            }
+                        }
+            }
 	}
-
 	/**
 	 *
 	 * @return le nombre d'enregistrements dans la table CUSTOMER
