@@ -76,33 +76,51 @@ public class DAO {
 	 * taille
 	 * @throws java.lang.Exception si la transaction a échoué
 	 */
-	public void createInvoice(CustomerEntity customer, int[] productIDs, int[] quantities)
+public void createInvoice(CustomerEntity customer, int[] productIDs, int[] quantities)
 		throws Exception {
-		
-            int id=0;
-            String sql ="INSERT INTO Invoice(CustomerID) VALUES(?)";
-            String sql2="SELECT INTO Item VALUES(?,?,?,(SELECT price FROM Product WHERE ID=?))";
-            try (Connection connection = myDataSource.getConnection();
-			PreparedStatement statement = connection.prepareStatement(sql,Statement.RETURN_GENERATED_KEYS)) {
-			statement.setInt(1, customer.getCustomerId());
-                        statement.executeUpdate();
-                        ResulSet key = statement.getGeneratedKeys();
-                        if(key.next()){
-                            id=key.getInt(1);
-                        }
-                        
-                        try(PreparedStatement statement2 = connection.prepareStatement(sql2)) {
-                            int nombre_produit=productIDs.length;
-                            for (int i=0;i<nombre_produit;i++){
-                                statement2.setInt(1, id);
-                                statement2.setInt(2, i);
-                                statement2.setInt(3, productIDs[i]);
-                                statement2.setInt(4, quantities[i]);
-                                statement2.setInt(5,productIDs[i]);
-                                statement2.executeUpdate();
-                            }
-                        }
-            }
+		boolean result = false;
+		String insertInvoice = "INSERT INTO Invoice(CustomerID) VALUES (?)";
+		//-------------------------------------------InvoiceID, Item, ProductID, Quantity, Cost
+		String insertItem = "INSERT INTO Item VALUES(?        , ?   , ?        , ?       , (SELECT Price FROM product WHERE Product.ID = ?) )";
+
+		try (Connection myConnection = myDataSource.getConnection();
+		     PreparedStatement invoiceStatement = myConnection.prepareStatement(insertInvoice, Statement.RETURN_GENERATED_KEYS)) {
+                        // On démarre la transaction
+			myConnection.setAutoCommit(false);
+			invoiceStatement.setInt(1, customer.getCustomerId());
+			try {
+				invoiceStatement.executeUpdate();
+
+				// On a bien créé la facture, cherchons son ID	
+				ResultSet generatedKeys = invoiceStatement.getGeneratedKeys();
+				generatedKeys.next();
+				int invoiceID = generatedKeys.getInt("ID");
+				Logger.getLogger("DAO").log(Level.INFO, "Nouvelle clé générée pour INVOICE : {0}", invoiceID);
+				
+				// Créer les Item
+				try (PreparedStatement itemStatement = myConnection.prepareStatement(insertItem)) {
+					for (int item = 0; item < productIDs.length; item++) {
+						itemStatement.clearParameters();
+						itemStatement.setInt(1, invoiceID);
+						itemStatement.setInt(2, item);
+						itemStatement.setInt(3, productIDs[item]);
+						itemStatement.setInt(4, quantities[item]);
+						itemStatement.setInt(5, productIDs[item]);
+						int n = itemStatement.executeUpdate();
+					}
+				}
+				// Tout s'est bien passé, on peut valider la transaction
+				myConnection.commit();
+				result = true;
+			} catch (Exception ex) { // Une erreur s'est produite
+				// On logge le message d'erreur
+				Logger.getLogger("DAO").log(Level.SEVERE, "Transaction en erreur", ex);
+				myConnection.rollback(); // On annule la transaction
+				throw(ex); // On relève l'exception pour l'appelant
+			} finally {
+				myConnection.setAutoCommit(true); // On revient au mode de fonctionnement sans transaction
+			}
+		}
 	}
 	/**
 	 *
